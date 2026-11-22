@@ -158,3 +158,73 @@ main:has(.selbar){padding-bottom:calc(var(--tabbar-h) + env(safe-area-inset-bott
   border-radius:12px;padding:10px 12px 10px 16px;box-shadow:0 6px 20px rgba(2,6,23,.25);font-weight:600}
 .updbanner button{border:0;border-radius:8px;padding:8px 14px;background:var(--accent-ink);color:var(--accent);font-weight:700;cursor:pointer}
 #addBreak{font-weight:600}
+
+/* ================= v3: theme picker ================= */
+.themes{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.themebtn{display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px;border:2px solid var(--line);border-radius:12px;
+  background:var(--bg);cursor:pointer;font-weight:600}
+.themebtn[aria-checked="true"]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--card))}
+.themebtn .sw{display:flex;gap:4px}
+.themebtn .sw i{width:22px;height:22px;border-radius:50%;border:1px solid rgba(0,0,0,.12)}
+:root{--pawmask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cellipse cx='12' cy='16' rx='5.6' ry='4.6'/%3E%3Cellipse cx='4.6' cy='10' rx='2.3' ry='2.9'/%3E%3Cellipse cx='9' cy='5.6' rx='2.3' ry='3'/%3E%3Cellipse cx='15' cy='5.6' rx='2.3' ry='3'/%3E%3Cellipse cx='19.4' cy='10' rx='2.3' ry='2.9'/%3E%3C/svg%3E")}
+.catlogo,.ears,.catcorner{display:none}
+.paw{display:inline-block;width:1em;height:1em;vertical-align:-.12em;background:var(--accent);-webkit-mask:var(--pawmask) center/contain no-repeat;mask:var(--pawmask) center/contain no-repeat}
+.btn .paw{background:currentColor}
+
+/* ================= Cat theme ================= */
+@font-face{font-family:"Nunito";src:url("fonts/nunito.woff2") format("woff2");font-weight:200 1000;font-display:swap}
+:root[data-theme="cat"]{
+  --bg:#fbf3ea; --card:#fffaf4; --text:#3b2a20; --muted:#8a7262; --line:#eedccb;
+  --accent:#d9652e; --accent-ink:#fff; --pos:#3f8f5a; --neg:#c2453d; --warn:#a86a12;
+  --radius:22px; --shadow:0 2px 0 #eedccb,0 6px 16px rgba(120,70,30,.08); --pink:#f4a7a0;
+  --paw:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90' viewBox='0 0 90 90'%3E%3Cg fill='%23d9652e' fill-opacity='.06' transform='rotate(-18 30 30)'%3E%3Cellipse cx='30' cy='36' rx='9' ry='7.5'/%3E%3Cellipse cx='19' cy='25' rx='3.6' ry='4.6'/%3E%3Cellipse cx='26.5' cy='20' rx='3.6' ry='4.8'/%3E%3Cellipse cx='34.5' cy='20' rx='3.6' ry='4.8'/%3E%3Cellipse cx='41.5' cy='25.5' rx='3.6' ry='4.6'/%3E%3C/g%3E%3C/svg%3E");
+}
+@media (prefers-color-scheme:dark){
+  :root[data-theme="cat"]{
+    --bg:#1c1512; --card:#2a201b; --text:#f6eadf; --muted:#bba391; --line:#46362c;
+    --accent:#f29560; --accent-ink:#1c1512; --pos:#86d19c; --neg:#f2877d; --warn:#f0bd62; --shadow:none; --pink:#c97c78;
+    --paw:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90' viewBox='0 0 90 90'%3E%3Cg fill='%23f29560' fill-opacity='.07' transform='rotate(-18 30 30)'%3E%3Cellipse cx='30' cy='36' rx='9' ry='7.5'/%3E%3Cellipse cx='19' cy='25' rx='3.6' ry='4.6'/%3E%3Cellipse cx='26.5' cy='20' rx='3.6' ry='4.8'/%3E%3Cellipse cx='34.5' cy='20' rx='3.6' ry='4.8'/%3E%3Cellipse cx='41.5' cy='25.5' rx='3.6' ry='4.6'/%3E%3C/g%3E%3C/svg%3E");
+  }
+}
+html[data-theme="cat"]{background:var(--bg) var(--paw)}
+[data-theme="cat"] body{background:transparent;
+  font-family:"Nunito","Quicksand",ui-rounded,"SF Pro Rounded","Segoe UI",system-ui,sans-serif}
+[data-theme="cat"] .topbar{background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(6px)}
+[data-theme="cat"] .topbar h1{display:flex;align-items:center;gap:8px}
+[data-theme="cat"] .catlogo{display:inline-block;width:28px;height:26px;background:var(--accent);
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 26'%3E%3Cpath d='M3 2l6 5.5a10 10 0 0 1 10 0L25 2v12a11 11 0 0 1-22 0z'/%3E%3C/svg%3E") center/contain no-repeat;
+          mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 26'%3E%3Cpath d='M3 2l6 5.5a10 10 0 0 1 10 0L25 2v12a11 11 0 0 1-22 0z'/%3E%3C/svg%3E") center/contain no-repeat}
+[data-theme="cat"] .card{border-width:2px}
+[data-theme="cat"] .btn,[data-theme="cat"] .seg,[data-theme="cat"] label.f input,[data-theme="cat"] label.f select,[data-theme="cat"] label.f textarea{border-radius:16px}
+[data-theme="cat"] .btn.primary{box-shadow:0 3px 0 color-mix(in srgb,var(--accent) 60%,#000)}
+[data-theme="cat"] .btn.primary:active{transform:translateY(2px);box-shadow:0 1px 0 color-mix(in srgb,var(--accent) 60%,#000)}
+[data-theme="cat"] .stat{border-radius:16px}
+[data-theme="cat"] .cell{border-radius:14px}
+[data-theme="cat"] .cell.today{outline:none;border:2px solid var(--accent)}
+[data-theme="cat"] .cell.today::after{content:"";position:absolute;left:5px;bottom:5px;width:11px;height:11px;background:var(--accent);-webkit-mask:var(--pawmask) center/contain no-repeat;mask:var(--pawmask) center/contain no-repeat}
+[data-theme="cat"] .pulse{width:auto;height:auto;background:none;box-shadow:none;animation:knead 1.2s ease-in-out infinite;font-size:1.2rem}
+[data-theme="cat"] .pulse::before{content:"";display:block;width:22px;height:22px;background:var(--accent);-webkit-mask:var(--pawmask) center/contain no-repeat;mask:var(--pawmask) center/contain no-repeat}
+@keyframes knead{0%,100%{transform:translateY(0) rotate(-8deg)}50%{transform:translateY(-3px) rotate(8deg)}}
+[data-theme="cat"] .tabbar button[aria-current="page"] svg{filter:drop-shadow(0 2px 0 color-mix(in srgb,var(--accent) 30%,transparent))}
+
+/* ears on the balance card */
+[data-theme="cat"] .hero{position:relative;margin-top:34px;overflow:visible}
+[data-theme="cat"] .ears{display:block;position:absolute;inset:-30px 0 auto 0;height:44px;pointer-events:none;z-index:-1;
+  filter:drop-shadow(0 -2px 0 var(--line)) drop-shadow(2px 0 0 var(--line)) drop-shadow(-2px 0 0 var(--line))}
+[data-theme="cat"] .ears i{position:absolute;bottom:0;width:66px;height:50px;background:var(--card);
+  clip-path:polygon(0 100%,38% 4%,46% 0,54% 4%,100% 100%)}
+[data-theme="cat"] .ears i:first-child{left:14%;transform:rotate(-14deg);transform-origin:bottom center}
+[data-theme="cat"] .ears i:last-child{right:14%;transform:rotate(14deg);transform-origin:bottom center}
+[data-theme="cat"] .ears i::after{content:"";position:absolute;left:22%;right:22%;bottom:0;height:62%;bottom:14px;background:var(--pink);opacity:.55;
+  clip-path:polygon(0 100%,44% 6%,56% 6%,100% 100%)}
+
+/* sleeping cat in the recent-days card */
+[data-theme="cat"] .catcorner{display:flex;justify-content:flex-end;margin:6px -4px -8px 0;color:var(--muted);opacity:.7}
+.catdeco{width:84px;height:49px}
+[data-theme="cat"] .hero .big{letter-spacing:-.01em}
+[data-theme="cat"] .toast{border-radius:16px}
+[data-theme="cat"] .selbar,[data-theme="cat"] .sheet{border-radius:26px 26px 0 0}
+
+/* v4: colored paws instead of dots in the cat theme */
+[data-theme="cat"] .dot{width:13px;height:13px;border-radius:0;background:var(--c);
+  -webkit-mask:var(--pawmask) center/contain no-repeat;mask:var(--pawmask) center/contain no-repeat}

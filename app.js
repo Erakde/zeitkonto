@@ -3,8 +3,10 @@
 
 /* ---------------- constants ---------------- */
 const KEY = 'zeitkonto.v1';            // storage key – keep it, or existing data is lost
-const APP_VERSION = 2;                   // raise together with CACHE in sw.js
+const APP_VERSION = 4;                   // raise together with CACHE in sw.js
 const CHANGELOG = {
+  4: ['Cat theme: calmer texts, colored paws instead of dots for day types'],
+  3: ['Themes: pick Classic or the new Cat theme in Settings → Look'],
   2: ['One-tap break button on the Today screen (length set in Settings, undo-able)',
       'Select several days in the calendar and mark them all at once',
       'Version number, “Check for updates” and an update notice'],
@@ -101,7 +103,7 @@ const holidayName = s => holidaysFor(+s.slice(0,4), S.settings.state)[s] || null
 function defaultState(){
   return { v:1,
     settings:{ targets:[480,480,480,480,480,0,0], state:'none', start: today(), opening:0, csv:'de',
-               autoBreak:true, setupDone:false, lastBackup:null, breakLen:30, seenVersion:APP_VERSION },
+               autoBreak:true, setupDone:false, lastBackup:null, breakLen:30, seenVersion:APP_VERSION, theme:'classic' },
     last:{ start:'09:00', end:'17:30', brk:30, loc:'work' },
     entries:[], days:{}, running:null, pause:null };
 }
@@ -170,6 +172,33 @@ function agg(from, to){
 const accountAt = s => S.settings.opening + agg(S.settings.start, s).balance;
 const monthRange = (y, m) => [`${y}-${pad(m+1)}-01`, ymd(new Date(y, m+1, 0))];
 
+/* ---------------- themes ---------------- */
+const THEMES = {
+  classic: { label:'Classic', swatch:['#f4f6fa','#1e40af','#15803d'], meta:'#1e3a8a' },
+  cat:     { label:'Cat',     swatch:['#fbf3ea','#e0703a','#3b2a20'], meta:'#e0703a' },
+};
+const isCat = () => S.settings.theme === 'cat';
+// texts: the cat theme only changes the save message
+const TX = {
+  account:   () => 'Time account (overall)',
+  clocked:   () => 'Clocked in',
+  breakBtn:  L  => `☕ Break ${L} min`,
+  breakDone: L  => `☕ ${L} min break logged`,
+  saved:     () => isCat() ? 'Purr-fect! Saved' : 'Saved',
+  empty:     () => 'No entries yet.',
+  clockIn:   () => isCat() ? '<i class="paw"></i> Clock in now' : '▶ Clock in now',
+};
+function applyTheme(){
+  const t = THEMES[S.settings.theme] ? S.settings.theme : 'classic';
+  document.documentElement.dataset.theme = t;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEMES[t].meta);
+}
+// original line-art cat (used in the cat theme)
+const CAT_SVG = `<svg class="catdeco" viewBox="0 0 120 70" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M20 62c-6-22 8-38 34-38 20 0 34 10 36 26 1 7-2 12-8 12H26"/><path d="M90 50c10 2 20-2 22-10"/>
+  <path d="M30 30l-4-16 14 8"/><path d="M54 24l6-14 6 16"/>
+  <path d="M34 42c3 2 6 2 9 0M52 42c3 2 6 2 9 0"/><path d="M46 50l2 2 2-2"/></g></svg>`;
+
 /* ---------------- UI plumbing ---------------- */
 const $ = (sel, root=document) => root.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -187,6 +216,7 @@ function setTab(t){ tab = t; try { localStorage.setItem(KEY+'.tab', t); } catch 
 document.querySelectorAll('.tabbar button').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
 
 function render(){
+  applyTheme();
   document.querySelectorAll('.tabbar button').forEach(b => b.dataset.tab === tab ? b.setAttribute('aria-current','page') : b.removeAttribute('aria-current'));
   const acc = accountAt(today());
   $('#topBalance').innerHTML = `<span class="${balCls(acc)}">${fmtBal(acc)}</span>`;
@@ -207,8 +237,8 @@ function viewHome(){
   ${!S.settings.setupDone ? `<div class="card banner"><strong>Welcome!</strong><div class="small mt">First set your weekly target hours, your Bundesland (for public holidays) and the date you start tracking from.</div>
      <button class="btn primary mt" data-go="set">Open settings</button></div>` : ''}
   ${S.entries.length >= 5 && (backupDays === null || backupDays > 30) ? `<div class="card banner small">Your data lives only on this phone. ${backupDays===null?'You have never made a backup.':`Last backup ${backupDays} days ago.`} <button class="linkbtn" data-go="set">Back up now</button></div>` : ''}
-  <div class="card hero">
-    <div class="label">Time account (overall)</div>
+  <div class="card hero">${isCat() ? '<div class="ears" aria-hidden="true"><i></i><i></i></div>' : ''}
+    <div class="label">${TX.account()}</div>
     <div class="big ${balCls(acc)}">${fmtBal(acc)}</div>
     <div class="stats">
       <div class="stat"><div class="k">This week</div><div class="v ${balCls(wk.balance)}">${fmtBal(wk.balance)}</div></div>
@@ -220,11 +250,11 @@ function viewHome(){
 
   <div class="card">
     ${S.running ? `
-      <div class="running"><span class="pulse"></span><div class="spacer"><strong>Clocked in</strong><div class="small muted">since ${esc(S.running.start)}${S.running.date!==t?' on '+fmtDay(S.running.date):''}</div></div>
+      <div class="running"><span class="pulse"></span><div class="spacer"><strong>${TX.clocked()}</strong><div class="small muted">since ${esc(S.running.start)}${S.running.date!==t?' on '+fmtDay(S.running.date):''}</div></div>
       <button class="btn primary" id="clockOut">Clock out</button></div>
       <button class="linkbtn small" id="clockCancel">Cancel clock-in</button>`
     : `<div class="row"><div class="spacer"><strong>Today</strong> <span class="small muted">${fmtDay(t)}</span>${td.hol?`<div class="small muted">${esc(td.hol)}</div>`:''}</div>
-       <button class="btn" id="clockIn">▶ Clock in now</button></div>`}
+       <button class="btn" id="clockIn">${TX.clockIn()}</button></div>`}
     ${breakRow()}
   </div>
 
@@ -248,7 +278,7 @@ function viewHome(){
 
   <div class="card">
     <h2>Recent days</h2>
-    ${recent.length ? `<ul class="list">${recent.map(dayLi).join('')}</ul>` : `<div class="muted small">No entries yet.</div>`}
+    ${recent.length ? `<ul class="list">${recent.map(dayLi).join('')}</ul>` : `<div class="muted small">${TX.empty()}</div>`}${isCat() ? `<div class="catcorner">${CAT_SVG}</div>` : ''}
   </div>`;
 }
 /* one-tap break: goes to the running clock-in, otherwise to today's latest entry */
@@ -261,7 +291,7 @@ function curBreak(tgt){ return !tgt ? 0 : tgt.kind === 'running' ? (S.running.br
 function breakLog(){ return S.pause && S.pause.date === today() ? S.pause.items : []; }
 function breakRow(){
   const L = S.settings.breakLen, tgt = breakTarget(), cur = curBreak(tgt), n = breakLog().length;
-  return `<button class="btn block mt" id="addBreak" ${tgt ? '' : 'disabled'}>☕ Break ${L} min</button>
+  return `<button class="btn block mt" id="addBreak" ${tgt ? '' : 'disabled'}>${TX.breakBtn(L)}</button>
     <div class="row small" style="margin-top:6px"><span class="muted spacer">${
       !tgt ? 'Clock in (or add today’s time) to log a break.'
       : cur ? `Break ${tgt.kind==='running' ? 'so far' : 'in today’s last entry'}: <strong>${cur} min</strong>` : 'No break logged yet.'}</span>
@@ -278,7 +308,7 @@ function addBreak(){
   }
   if (!S.pause || S.pause.date !== today()) S.pause = { date: today(), items: [] };
   S.pause.items.push({ kind: tgt.kind, id: tgt.id || null, min: L });
-  save(); toast(`☕ ${L} min break logged`, 'Undo', undoBreak);
+  save(); toast(TX.breakDone(L), 'Undo', undoBreak);
 }
 function undoBreak(){
   const it = S.pause?.items.pop(); if (!it) return;
@@ -397,7 +427,14 @@ function viewSum(){
 /* ---------------- Settings view ---------------- */
 function viewSettings(){
   const st = S.settings, wkTotal = st.targets.reduce((a,b) => a+b, 0);
-  return `<form id="setForm" autocomplete="off">
+  return `<div class="card"><h2>Look</h2>
+    <div class="themes" role="radiogroup" aria-label="Theme">${Object.entries(THEMES).map(([k,v]) => `
+      <button class="themebtn" role="radio" data-theme-pick="${k}" aria-checked="${(st.theme||'classic')===k}">
+        <span class="sw">${v.swatch.map(c => `<i style="background:${c}"></i>`).join('')}</span>
+        <span>${k==='cat' ? '🐱 ' : ''}${v.label}</span></button>`).join('')}</div>
+    <div class="small muted mt">Both follow your phone's light/dark mode.</div>
+  </div>
+  <form id="setForm" autocomplete="off">
   <div class="card"><h2>Target hours</h2>
     <div class="grid3">${DOW.map((d,i) => `<label class="f">${d}<input name="t${i}" inputmode="decimal" value="${fmtDur(st.targets[i])}"></label>`).join('')}</div>
     <div class="small muted mt">Per weekday, e.g. <code>8</code>, <code>7.5</code> or <code>7:42</code>. Week total: <strong id="wkTotal">${fmtDur(wkTotal)}</strong></div>
@@ -555,7 +592,7 @@ function submitEntry(f, id){
     S.last.loc = loc;
   }
   Object.assign(S.last, { start, end, brk });
-  save(); toast(`Saved ${fmtDur(span - brk)} h on ${fmtDay(date)}`);
+  save(); toast(`${TX.saved()} ${fmtDur(span - brk)} h on ${fmtDay(date)}`);
   return id;
 }
 
@@ -624,6 +661,8 @@ const bind = {
     });
     $('#csvFmt', v).addEventListener('change', e => { S.settings.csv = e.target.value; save(); });
     $('#chkUpd', v).addEventListener('click', () => checkForUpdate(true));
+    v.querySelectorAll('[data-theme-pick]').forEach(b => b.addEventListener('click', () => {
+      S.settings.theme = b.dataset.themePick; save(); toast(isCat() ? 'Cat theme on' : 'Classic theme on'); }));
     $('#expJson', v).addEventListener('click', () => { download(backupName(), backupBlob()); markBackup(); });
     $('#expCsv', v).addEventListener('click', () => download(`zeitkonto-${today()}.csv`, csvBlob()));
     $('#shareJson', v)?.addEventListener('click', async () => {

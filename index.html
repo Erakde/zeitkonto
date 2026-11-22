@@ -10,10 +10,12 @@
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="styles.css">
+<script>/* apply the saved theme before the page draws, to avoid a flash */
+try{var z=JSON.parse(localStorage.getItem('zeitkonto.v1'));if(z&&z.settings&&z.settings.theme)document.documentElement.dataset.theme=z.settings.theme}catch(e){}</script>
 </head>
 <body>
 <header class="topbar">
-  <h1 id="title">Zeitkonto</h1>
+  <h1 id="title"><span class="catlogo" aria-hidden="true"></span>Zeitkonto</h1>
   <div id="topBalance" class="top-balance" aria-live="polite"></div>
 </header>
 

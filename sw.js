@@ -1,8 +1,8 @@
 // Offline support. Each release gets its own cache; a new release waits until the
 // user taps "Reload" in the app (or all app windows were closed), then replaces the old one.
-const CACHE = 'zeitkonto-v2';            // raise together with APP_VERSION in app.js
+const CACHE = 'zeitkonto-v4';            // raise together with APP_VERSION in app.js
 const FILES = ['./', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest',
-  'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'];
+  'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png', 'fonts/nunito.woff2'];
 
 self.addEventListener('install', e => {
   // cache: 'reload' bypasses the browser's HTTP cache so we really get the new files

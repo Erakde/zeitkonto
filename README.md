@@ -1,4 +1,4 @@
-# Zeitkonto – personal working-hours tracker (PWA) - vibe coded with Claude
+# Zeitkonto – personal working-hours tracker (PWA)
 
 A small web app that installs on your Android phone, works offline, and keeps your
 flextime balance (Zeitkonto): daily, weekly, monthly, yearly and overall.
@@ -40,6 +40,7 @@ Keep using the installed app (not the browser tab): Android then protects its st
    tap the first and last day, **Fill range**, then pick the type (weekends and public holidays are
    skipped unless you untick that option).
 4. **Balances**: year → months → ISO weeks → days, each with worked/target/balance.
+5. **Look**: Settings → *Look* switches between the Classic and the Cat theme.
 
 ### How days count
 
@@ -68,7 +69,7 @@ The app reminds you if you haven't made a backup for 30 days.
 ## Updating the app
 
 1. Upload the new files to your GitHub repository (**Add file → Upload files**, drag in the files and the
-   `icons` folder, **Commit changes**). Files with the same name are overwritten.
+   `icons` and `fonts` folders, **Commit changes**). Files with the same name are overwritten.
 2. Wait 1–2 minutes until GitHub Pages has published (green ✓ under the **Actions** tab).
 3. Open the app on your phone. Within a few seconds a blue **“A new version is available – Reload”** bar
    appears; tap **Reload**. (If you don't see it, close the app completely and open it again, or use
