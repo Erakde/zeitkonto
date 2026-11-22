@@ -2,7 +2,14 @@
 'use strict';
 
 /* ---------------- constants ---------------- */
-const KEY = 'zeitkonto.v1';
+const KEY = 'zeitkonto.v1';            // storage key – keep it, or existing data is lost
+const APP_VERSION = 2;                   // raise together with CACHE in sw.js
+const CHANGELOG = {
+  2: ['One-tap break button on the Today screen (length set in Settings, undo-able)',
+      'Select several days in the calendar and mark them all at once',
+      'Version number, “Check for updates” and an update notice'],
+  1: ['First version'],
+};
 const TYPES = {
   work:          { label: 'Office',        color: '#3b82f6' },
   wfh:           { label: 'Home office',   color: '#14b8a6' },
@@ -94,9 +101,9 @@ const holidayName = s => holidaysFor(+s.slice(0,4), S.settings.state)[s] || null
 function defaultState(){
   return { v:1,
     settings:{ targets:[480,480,480,480,480,0,0], state:'none', start: today(), opening:0, csv:'de',
-               autoBreak:true, setupDone:false, lastBackup:null },
+               autoBreak:true, setupDone:false, lastBackup:null, breakLen:30, seenVersion:APP_VERSION },
     last:{ start:'09:00', end:'17:30', brk:30, loc:'work' },
-    entries:[], days:{}, running:null };
+    entries:[], days:{}, running:null, pause:null };
 }
 let S = load();
 function load(){
@@ -108,9 +115,12 @@ function load(){
 }
 function normalize(o){
   const d = defaultState();
-  return { v:1, settings:{ ...d.settings, ...(o.settings||{}) }, last:{ ...d.last, ...(o.last||{}) },
+  const settings = { ...d.settings, ...(o.settings||{}) };
+  if (!o.settings || !('seenVersion' in o.settings)) settings.seenVersion = 1;   // data from version 1
+  return { v:1, settings, last:{ ...d.last, ...(o.last||{}) },
     entries: Array.isArray(o.entries) ? o.entries.filter(e => e && e.date && e.start && e.end) : [],
-    days: (o.days && typeof o.days === 'object') ? o.days : {}, running: o.running || null };
+    days: (o.days && typeof o.days === 'object') ? o.days : {}, running: o.running || null,
+    pause: o.pause && Array.isArray(o.pause.items) ? o.pause : null };
 }
 let persistAsked = false;
 function save(){
@@ -164,9 +174,13 @@ const monthRange = (y, m) => [`${y}-${pad(m+1)}-01`, ymd(new Date(y, m+1, 0))];
 const $ = (sel, root=document) => root.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let tab = (() => { try { return localStorage.getItem(KEY+'.tab') || 'home'; } catch { return 'home'; } })();
-const ui = { calY: new Date().getFullYear(), calM: new Date().getMonth(), sumY: new Date().getFullYear(), open: new Set() };
+const ui = { calY: new Date().getFullYear(), calM: new Date().getMonth(), sumY: new Date().getFullYear(), open: new Set(), sel: null, skipWk: true };
 let toastT;
-function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2400); }
+function toast(msg, actLabel, actFn){
+  const t = $('#toast'); t.textContent = msg; t.classList.toggle('act', !!actFn);
+  if (actFn){ const b = document.createElement('button'); b.textContent = actLabel; b.onclick = () => { t.classList.remove('show'); actFn(); }; t.append(' ', b); }
+  t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), actFn ? 6000 : 2400);
+}
 const typeTag = t => t ? `<span class="tag" style="--c:${TYPES[t].color}"><span class="dot"></span>${TYPES[t].label}</span>` : '';
 
 function setTab(t){ tab = t; try { localStorage.setItem(KEY+'.tab', t); } catch {} render(); $('#view').scrollTop = 0; window.scrollTo(0,0); }
@@ -208,9 +222,10 @@ function viewHome(){
     ${S.running ? `
       <div class="running"><span class="pulse"></span><div class="spacer"><strong>Clocked in</strong><div class="small muted">since ${esc(S.running.start)}${S.running.date!==t?' on '+fmtDay(S.running.date):''}</div></div>
       <button class="btn primary" id="clockOut">Clock out</button></div>
-      <button class="linkbtn small" id="clockCancel">Cancel</button>`
+      <button class="linkbtn small" id="clockCancel">Cancel clock-in</button>`
     : `<div class="row"><div class="spacer"><strong>Today</strong> <span class="small muted">${fmtDay(t)}</span>${td.hol?`<div class="small muted">${esc(td.hol)}</div>`:''}</div>
        <button class="btn" id="clockIn">▶ Clock in now</button></div>`}
+    ${breakRow()}
   </div>
 
   <div class="card">
@@ -228,7 +243,7 @@ function viewHome(){
       </div>
       <div class="row mt"><span class="small muted num spacer" id="addPreview"></span><button class="btn primary" type="submit">Save</button></div>
     </form>
-    <div class="row mt small"><span class="muted spacer">Absent? Mark the day as vacation, sick…</span><button class="linkbtn" id="markDay">Mark a day</button></div>
+    <div class="row mt small"><span class="muted spacer">Absent? Mark days as vacation, sick…</span><button class="linkbtn" id="markDay">Mark days</button></div>
   </div>
 
   <div class="card">
@@ -236,6 +251,42 @@ function viewHome(){
     ${recent.length ? `<ul class="list">${recent.map(dayLi).join('')}</ul>` : `<div class="muted small">No entries yet.</div>`}
   </div>`;
 }
+/* one-tap break: goes to the running clock-in, otherwise to today's latest entry */
+function breakTarget(){
+  if (S.running) return { kind:'running' };
+  const ents = entriesOn(today());
+  return ents.length ? { kind:'entry', id: ents[ents.length-1].id } : null;
+}
+function curBreak(tgt){ return !tgt ? 0 : tgt.kind === 'running' ? (S.running.brk||0) : (S.entries.find(e => e.id === tgt.id)?.brk||0); }
+function breakLog(){ return S.pause && S.pause.date === today() ? S.pause.items : []; }
+function breakRow(){
+  const L = S.settings.breakLen, tgt = breakTarget(), cur = curBreak(tgt), n = breakLog().length;
+  return `<button class="btn block mt" id="addBreak" ${tgt ? '' : 'disabled'}>☕ Break ${L} min</button>
+    <div class="row small" style="margin-top:6px"><span class="muted spacer">${
+      !tgt ? 'Clock in (or add today’s time) to log a break.'
+      : cur ? `Break ${tgt.kind==='running' ? 'so far' : 'in today’s last entry'}: <strong>${cur} min</strong>` : 'No break logged yet.'}</span>
+      ${n ? `<button class="linkbtn small" id="undoBreak">↶ Undo last break</button>` : ''}</div>`;
+}
+function addBreak(){
+  const tgt = breakTarget(); if (!tgt) return;
+  const L = S.settings.breakLen;
+  if (tgt.kind === 'running') S.running.brk = (S.running.brk||0) + L;
+  else {
+    const e = S.entries.find(z => z.id === tgt.id); let span = hm2min(e.end) - hm2min(e.start); if (span < 0) span += 1440;
+    if ((e.brk||0) + L >= span){ toast('Break would be longer than the working time'); return; }
+    e.brk = (e.brk||0) + L;
+  }
+  if (!S.pause || S.pause.date !== today()) S.pause = { date: today(), items: [] };
+  S.pause.items.push({ kind: tgt.kind, id: tgt.id || null, min: L });
+  save(); toast(`☕ ${L} min break logged`, 'Undo', undoBreak);
+}
+function undoBreak(){
+  const it = S.pause?.items.pop(); if (!it) return;
+  if (it.kind === 'running'){ if (S.running) S.running.brk = Math.max(0, (S.running.brk||0) - it.min); }
+  else { const e = S.entries.find(z => z.id === it.id); if (e) e.brk = Math.max(0, (e.brk||0) - it.min); }
+  save(); toast(`Break of ${it.min} min removed`);
+}
+
 function dayLi(x){
   const times = x.ents.map(e => `${e.start}–${e.end}`).join(', ');
   return `<li><button class="rowbtn" data-day="${x.date}"><div class="main"><div class="t1">${fmtDay(x.date)} ${typeTag(x.type)}</div>
@@ -251,18 +302,32 @@ function viewCal(){
   for (let s = a; s <= b; s = addDays(s,1)){
     const x = day(s), show = x.explicit || x.hol || x.ents.length;
     const c = x.type ? TYPES[x.type].color : 'transparent';
-    cells.push(`<button class="cell ${show?'typed':''} ${x.base===0?'wkend':''} ${s===t?'today':''}" style="--c:${c}" data-day="${s}"
-      aria-label="${fmtDayLong(s)}${x.type?', '+TYPES[x.type].label:''}${x.counted?', balance '+fmtBal(x.balance):''}">
-      <span class="d">${parseD(s).getDate()}</span>${x.warn?'<span class="mark warn">⚠︎</span>':''}
+    const sel = ui.sel?.has(s);
+    cells.push(`<button class="cell ${show?'typed':''} ${x.base===0?'wkend':''} ${s===t?'today':''} ${sel?'sel':''}" style="--c:${c}" data-day="${s}"
+      ${ui.sel ? `aria-pressed="${!!sel}"` : ''} aria-label="${fmtDayLong(s)}${x.type?', '+TYPES[x.type].label:''}${x.counted?', balance '+fmtBal(x.balance):''}">
+      <span class="d">${parseD(s).getDate()}</span>${sel?'<span class="mark selmark">✓</span>':x.warn?'<span class="mark warn">⚠︎</span>':''}
       <span class="b ${balCls(x.balance)}">${x.counted && (x.target || x.worked) ? fmtBal(x.balance) : (x.ents.length ? fmtDur(x.worked) : '')}</span></button>`);
   }
   const mo = agg(a, b < t ? b : t);
-  return `<div class="card">
+  const n = ui.sel?.size || 0;
+  return `${ui.sel ? `<div class="card selhint small"><strong>Select days:</strong> tap each day, or tap the first and last day and then “Fill range”. You can switch months.</div>` : ''}
+  <div class="card">
     <div class="calnav"><button class="iconbtn" id="calPrev" aria-label="Previous month">‹</button>
       <h2>${MONTHS[m]} ${y}</h2><button class="iconbtn" id="calNext" aria-label="Next month">›</button></div>
     <div class="cal">${DOW.map(d => `<div class="dow">${d}</div>`).join('')}${cells.join('')}</div>
     <div class="legend">${Object.entries(TYPES).map(([k,v]) => `<span><i class="dot" style="--c:${v.color}"></i>${v.label}</span>`).join('')}</div>
+    ${ui.sel ? '' : `<button class="btn block mt" id="selStart">☑ Select several days</button>`}
   </div>
+  ${ui.sel ? `<div class="selbar" role="region" aria-label="Selection">
+    <div class="row"><strong class="spacer">${n} day${n===1?'':'s'} selected</strong>
+      <button class="linkbtn small" id="selRange" ${n>=2?'':'disabled'}>Fill range</button>
+      <button class="linkbtn small" id="selClear" ${n?'':'disabled'} style="margin-left:12px">Clear</button></div>
+    <div class="small muted" style="margin:6px 0">Mark selected days as:</div>
+    <div class="chips">${Object.entries(TYPES).map(([k,v]) => `<button class="chip" style="--c:${v.color}" data-apply="${k}" ${n?'':'disabled'}><span class="dot"></span>${v.label}</button>`).join('')}
+      <button class="chip" data-apply="" ${n?'':'disabled'}>↺ Reset to default</button></div>
+    <label class="small row mt" style="gap:8px"><input type="checkbox" id="skipWk" ${ui.skipWk?'checked':''}> Skip weekends &amp; public holidays</label>
+    <button class="btn block mt" id="selDone">Done</button>
+  </div>` : ''}
   <div class="card"><h2>${MONTHS[m]} total</h2>
     <div class="stats" style="margin-top:0">
       <div class="stat"><div class="k">Worked</div><div class="v">${fmtDur(mo.worked)}</div></div>
@@ -273,11 +338,21 @@ function viewCal(){
   </div>`;
 }
 
+function applyToSelection(type){
+  const days = [...ui.sel].sort().filter(s => type === 'holiday' || !ui.skipWk || (day(s).base > 0 && !day(s).hol));
+  if (!days.length){ toast('No working days in the selection'); return; }
+  const before = days.map(s => [s, S.days[s] ? { ...S.days[s] } : undefined]);
+  days.forEach(s => setDayType(s, type));
+  ui.sel = null; save();
+  toast(`${days.length} day${days.length===1?'':'s'} ${type ? 'marked as ' + TYPES[type].label : 'reset'}`, 'Undo', () => {
+    before.forEach(([s, rec]) => { if (rec) S.days[s] = rec; else delete S.days[s]; }); save(); toast('Undone'); });
+}
+
 /* ---------------- Balances view ---------------- */
 function viewSum(){
   const y = ui.sumY, t = today(), yEnd = `${y}-12-31`, upto = yEnd < t ? yEnd : t;
   const yr = agg(`${y}-01-01`, upto);
-  const counts = {}; for (let s = `${y}-01-01`; s <= upto; s = addDays(s,1)){ const x = day(s); if (x.counted && x.type && x.type!=='work') counts[x.type] = (counts[x.type]||0) + (x.type==='vacation_half'?0.5:1); }
+  const counts = {}; for (let s = `${y}-01-01`; s <= upto; s = addDays(s,1)){ const x = day(s); if (x.counted && x.type && x.type!=='work' && x.base > 0 && (x.type==='holiday' || !x.hol)) counts[x.type] = (counts[x.type]||0) + (x.type==='vacation_half'?0.5:1); }
   if (counts.vacation_half){ counts.vacation = (counts.vacation||0) + counts.vacation_half; delete counts.vacation_half; }
   let months = '';
   for (let m = 11; m >= 0; m--){
@@ -338,6 +413,10 @@ function viewSettings(){
     </div>
     <div class="small muted mt">Days before “count from” are ignored. Opening balance is your existing overtime (e.g. <code>+12:30</code> or <code>-3:00</code>).</div>
   </div>
+  <div class="card"><h2>Break button</h2>
+    <label class="f">Length of one break (minutes)<input type="number" name="breakLen" min="5" max="240" step="5" inputmode="numeric" value="${st.breakLen}"></label>
+    <div class="small muted mt">Each tap on the ☕ button on the Today screen adds this much break time.</div>
+  </div>
   <div class="row"><span class="spacer small muted" id="setMsg"></span><button class="btn primary" type="submit">Save settings</button></div>
   </form>
 
@@ -354,8 +433,13 @@ function viewSettings(){
       <option value="intl" ${st.csv==='intl'?'selected':''}>International: , and decimal point</option></select></label>
     <div class="small muted mt">${S.entries.length} entries · ${Object.keys(S.days).length} marked days · last backup: ${st.lastBackup ? new Date(st.lastBackup).toLocaleDateString('en-GB') : 'never'}<br><span id="persist"></span></div>
   </div>
-  <div class="card"><h2>Danger zone</h2><button class="btn danger" id="wipe">Delete all data</button></div>
-  <div class="small muted" style="text-align:center">Zeitkonto v1 · works offline</div>`;
+  <div class="card"><h2>App</h2>
+    <div class="row"><div class="spacer"><strong>Version ${APP_VERSION}</strong><div class="small muted">Works offline</div></div><button class="btn" id="chkUpd">Check for updates</button></div>
+    <details class="acc mt" id="whatsNew"><summary><span class="nm">What’s new</span></summary><div class="inner small">
+      ${Object.keys(CHANGELOG).sort((a,b) => b-a).map(v => `<div class="mt"><strong>Version ${v}</strong><ul style="margin:4px 0;padding-left:18px">${CHANGELOG[v].map(c => `<li>${esc(c)}</li>`).join('')}</ul></div>`).join('')}
+    </div></details>
+  </div>
+  <div class="card"><h2>Danger zone</h2><button class="btn danger" id="wipe">Delete all data</button></div>`;
 }
 
 /* ---------------- day sheet & entry editor ---------------- */
@@ -440,7 +524,7 @@ function openEntry(e, after, onSaved){
         if (a === 'cancel'){ after ? after() : closeModal(); }
         if (a === 'del'){ S.entries = S.entries.filter(z => z.id !== e.id); save(); toast('Entry deleted'); after ? after() : closeModal(); }
       });
-      f.addEventListener('submit', ev => { ev.preventDefault(); const r = submitEntry(f, isNew ? null : e.id); if (r){ onSaved?.(); after ? after() : closeModal(); } });
+      f.addEventListener('submit', ev => { ev.preventDefault(); const r = submitEntry(f, isNew ? null : e.id); if (r){ onSaved?.(r); after ? after() : closeModal(); } });
     });
 }
 
@@ -464,7 +548,7 @@ function submitEntry(f, id){
   if (brk >= span){ toast('Break is longer than the working time'); return false; }
   const locBtn = f.querySelector('[data-loc][aria-pressed="true"]'), loc = locBtn?.dataset.loc;
   if (id){ const e = S.entries.find(z => z.id === id); Object.assign(e, { date, start, end, brk }); }
-  else S.entries.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2,6), date, start, end, brk });
+  else { id = Date.now().toString(36) + Math.random().toString(36).slice(2,6); S.entries.push({ id, date, start, end, brk }); }
   if (loc){
     const cur = S.days[date]?.type;
     if (!cur || cur === 'work' || cur === 'wfh') setDayType(date, loc === 'wfh' ? 'wfh' : null);
@@ -472,7 +556,7 @@ function submitEntry(f, id){
   }
   Object.assign(S.last, { start, end, brk });
   save(); toast(`Saved ${fmtDur(span - brk)} h on ${fmtDay(date)}`);
-  return true;
+  return id;
 }
 
 /* ---------------- per-view event binding ---------------- */
@@ -482,25 +566,40 @@ const bind = {
     v.querySelectorAll('[data-day]').forEach(b => b.addEventListener('click', () => openDay(b.dataset.day)));
     const f = $('#addForm', v); wireEntryForm(f, $('#addPreview', v));
     f.addEventListener('submit', e => { e.preventDefault(); submitEntry(f); });
-    $('#markDay', v).addEventListener('click', () => openModal(`<h3>Mark a day</h3><div class="sub">Pick the day, then choose its type.</div>
-      <label class="f">Date<input type="date" id="mkDate" value="${today()}"></label>
-      <div class="row end mt"><button class="btn" data-a="c">Cancel</button><button class="btn primary" data-a="ok">Open day</button></div>`,
-      el => el.addEventListener('click', e => { const a = e.target.closest('[data-a]')?.dataset.a;
-        if (a === 'c') closeModal(); if (a === 'ok'){ const d = $('#mkDate', el).value; if (d) openDay(d); } })));
-    $('#clockIn', v)?.addEventListener('click', () => { S.running = { date: today(), start: nowHM() }; save(); toast('Clocked in at ' + S.running.start); });
-    $('#clockCancel', v)?.addEventListener('click', () => { S.running = null; save(); });
+    $('#markDay', v).addEventListener('click', () => { ui.sel = new Set(); const n = new Date(); ui.calY = n.getFullYear(); ui.calM = n.getMonth(); setTab('cal'); });
+    $('#addBreak', v).addEventListener('click', addBreak);
+    $('#undoBreak', v)?.addEventListener('click', undoBreak);
+    $('#clockIn', v)?.addEventListener('click', () => { S.running = { date: today(), start: nowHM(), brk: 0 }; save(); toast('Clocked in at ' + S.running.start); });
+    $('#clockCancel', v)?.addEventListener('click', () => {
+      S.running = null; if (S.pause) S.pause.items = S.pause.items.filter(i => i.kind !== 'running'); save(); toast('Clock-in cancelled'); });
     $('#clockOut', v)?.addEventListener('click', () => {
       const r = S.running, end = nowHM();
       let span = hm2min(end) - hm2min(r.start); if (span < 0) span += 1440;
-      const brk = S.settings.autoBreak ? (span > 9*60+45 ? 45 : span > 6*60+30 ? 30 : 0) : S.last.brk;
+      // breaks logged with the ☕ button win; otherwise suggest the legal minimum
+      const brk = r.brk ? r.brk : S.settings.autoBreak ? (span > 9*60+45 ? 45 : span > 6*60+30 ? 30 : 0) : S.last.brk;
       // clock stays running until the entry is actually saved
-      openEntry({ date: r.date, start: r.start, end, brk }, null, () => { S.running = null; save(); });
+      openEntry({ date: r.date, start: r.start, end, brk }, null, id => {
+        S.running = null;
+        if (S.pause) S.pause.items.forEach(i => { if (i.kind === 'running'){ i.kind = 'entry'; i.id = id; } });
+        save(); });
     });
   },
   cal(v){
     $('#calPrev', v).onclick = () => { if (--ui.calM < 0){ ui.calM = 11; ui.calY--; } render(); };
     $('#calNext', v).onclick = () => { if (++ui.calM > 11){ ui.calM = 0; ui.calY++; } render(); };
-    v.querySelectorAll('[data-day]').forEach(b => b.addEventListener('click', () => openDay(b.dataset.day)));
+    v.querySelectorAll('[data-day]').forEach(b => b.addEventListener('click', () => {
+      const s = b.dataset.day;
+      if (!ui.sel) return openDay(s);
+      ui.sel.has(s) ? ui.sel.delete(s) : ui.sel.add(s); render();
+    }));
+    $('#selStart', v)?.addEventListener('click', () => { ui.sel = new Set(); render(); });
+    if (ui.sel){
+      $('#selDone', v).onclick = () => { ui.sel = null; render(); };
+      $('#selClear', v).onclick = () => { ui.sel.clear(); render(); };
+      $('#selRange', v).onclick = () => { const d = [...ui.sel].sort(); for (let s = d[0]; s <= d[d.length-1]; s = addDays(s,1)) ui.sel.add(s); render(); };
+      $('#skipWk', v).onchange = e => { ui.skipWk = e.target.checked; };
+      v.querySelectorAll('[data-apply]').forEach(b => b.addEventListener('click', () => applyToSelection(b.dataset.apply || null)));
+    }
     let x0 = null; const g = $('.cal', v);
     g.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive:true });
     g.addEventListener('touchend', e => { if (x0 === null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null;
@@ -519,10 +618,12 @@ const bind = {
       e.preventDefault();
       const targets = []; for (let i = 0; i < 7; i++){ const m = parseDur(f['t'+i].value); if (m === null || m < 0 || m > 1440){ toast(`Check the value for ${DOW[i]}`); return; } targets.push(m); }
       const opening = parseDur(f.opening.value); if (opening === null){ toast('Opening balance: use e.g. +12:30 or -3:00'); return; }
-      Object.assign(S.settings, { targets, state: f.state.value, start: f.start.value || today(), opening, setupDone: true });
+      const breakLen = Math.round(+f.breakLen.value); if (!(breakLen >= 1 && breakLen <= 240)){ toast('Break length: 1–240 minutes'); return; }
+      Object.assign(S.settings, { targets, state: f.state.value, start: f.start.value || today(), opening, breakLen, setupDone: true });
       save(); toast('Settings saved');
     });
     $('#csvFmt', v).addEventListener('change', e => { S.settings.csv = e.target.value; save(); });
+    $('#chkUpd', v).addEventListener('click', () => checkForUpdate(true));
     $('#expJson', v).addEventListener('click', () => { download(backupName(), backupBlob()); markBackup(); });
     $('#expCsv', v).addEventListener('click', () => download(`zeitkonto-${today()}.csv`, csvBlob()));
     $('#shareJson', v)?.addEventListener('click', async () => {
@@ -574,9 +675,41 @@ function csvBlob(){
   return new Blob(['﻿' + lines.join('\r\n')], { type:'text/csv;charset=utf-8' });
 }
 
+/* ---------------- updates ---------------- */
+let swReg = null, reloading = false;
+function showUpdate(worker){
+  let b = $('#updBanner');
+  if (!b){ b = document.createElement('div'); b.id = 'updBanner'; b.className = 'updbanner'; document.body.appendChild(b); }
+  b.innerHTML = `<span>✨ A new version is available</span><button>Reload</button>`;
+  b.querySelector('button').onclick = () => { b.querySelector('button').disabled = true; worker.postMessage('skipWaiting'); };
+}
+function watchWorker(w){ if (!w) return; w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) showUpdate(w); }); }
+async function checkForUpdate(manual){
+  if (!swReg){ if (manual) toast('Updates are checked when the app runs from your web address'); return; }
+  try { await swReg.update(); } catch { if (manual) toast('Offline – could not check'); return; }
+  if (swReg.waiting) showUpdate(swReg.waiting);
+  else if (swReg.installing) { watchWorker(swReg.installing); if (manual) toast('Downloading new version…'); }
+  else if (manual) toast(`You have the latest version (v${APP_VERSION})`);
+}
+if ('serviceWorker' in navigator && location.protocol !== 'file:'){
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    swReg = reg;
+    if (reg.waiting && navigator.serviceWorker.controller) showUpdate(reg.waiting);
+    watchWorker(reg.installing);
+    reg.addEventListener('updatefound', () => watchWorker(reg.installing));
+    // the browser may already be downloading a new version in the background: look again shortly
+    setTimeout(() => { if (reg.waiting && navigator.serviceWorker.controller) showUpdate(reg.waiting); else watchWorker(reg.installing); }, 2500);
+    setTimeout(() => checkForUpdate(false), 8000);
+  }).catch(() => {});
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloading){ reloading = true; location.reload(); } });
+}
+
 /* ---------------- start ---------------- */
 render();
-// re-render after midnight / when returning to the app so "today" stays right
-document.addEventListener('visibilitychange', () => { if (!document.hidden){ invalidate(); render(); } });
-if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+if (S.settings.seenVersion !== APP_VERSION){
+  const was = S.settings.seenVersion; S.settings.seenVersion = APP_VERSION; save();
+  if (was && was < APP_VERSION) setTimeout(() => toast(`Updated to version ${APP_VERSION}`, 'What’s new', () => { setTab('set'); setTimeout(() => { const d = $('#whatsNew'); if (d){ d.open = true; d.scrollIntoView({ block:'center' }); } }, 50); }), 400);
+}
+// re-render after midnight / when returning to the app so "today" stays right; also look for updates
+document.addEventListener('visibilitychange', () => { if (!document.hidden){ invalidate(); render(); checkForUpdate(false); } });
 window.__zk = { day, agg, accountAt, holidaysFor, parseDur, get S(){ return S; } }; // for debugging

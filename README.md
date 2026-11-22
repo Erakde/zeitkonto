@@ -33,8 +33,12 @@ Keep using the installed app (not the browser tab): Android then protects its st
 1. **Settings**: set your target hours per weekday, your Bundesland, the date you start counting from,
    and any existing overtime as the opening balance.
 2. **Today**: log a day (date, start, end, break, office/home office), or use *Clock in now* / *Clock out*.
+   Tap **☕ Break** to add a break with one tap (length set in Settings; *Undo last break* takes it back).
+   While clocked in, the break goes into the running session; otherwise into today's latest entry.
 3. **Calendar**: tap any day to add times or mark it as vacation, ½ vacation, sick leave,
-   public holiday or overtime off (*Gleittag*).
+   public holiday or overtime off (*Gleittag*). To mark many days at once, tap **Select several days**,
+   tap the first and last day, **Fill range**, then pick the type (weekends and public holidays are
+   skipped unless you untick that option).
 4. **Balances**: year → months → ISO weeks → days, each with worked/target/balance.
 
 ### How days count
@@ -63,5 +67,15 @@ The app reminds you if you haven't made a backup for 30 days.
 
 ## Updating the app
 
-Replace the files on GitHub. To make phones pick up the change, also change `CACHE = 'zeitkonto-v1'`
-in `sw.js` (e.g. to `v2`). Your data is not affected.
+1. Upload the new files to your GitHub repository (**Add file → Upload files**, drag in the files and the
+   `icons` folder, **Commit changes**). Files with the same name are overwritten.
+2. Wait 1–2 minutes until GitHub Pages has published (green ✓ under the **Actions** tab).
+3. Open the app on your phone. Within a few seconds a blue **“A new version is available – Reload”** bar
+   appears; tap **Reload**. (If you don't see it, close the app completely and open it again, or use
+   **Settings → Check for updates**.)
+
+Your data is never touched by an update. Settings → *App* shows the installed version and what's new.
+
+If you change files yourself, raise the version number in **both** places, or phones keep the old version:
+- `APP_VERSION` near the top of `app.js` (e.g. `2` → `3`), and
+- `CACHE` at the top of `sw.js` (e.g. `'zeitkonto-v2'` → `'zeitkonto-v3'`).
