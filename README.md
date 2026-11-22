@@ -1,4 +1,4 @@
-# Zeitkonto – personal working-hours tracker (PWA)
+# Zeitkonto – personal working-hours tracker (PWA) - vibe coded with Claude
 
 A small web app that installs on your Android phone, works offline, and keeps your
 flextime balance (Zeitkonto): daily, weekly, monthly, yearly and overall.
